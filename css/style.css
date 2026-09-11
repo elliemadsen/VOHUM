@@ -120,7 +120,17 @@ img { max-width: 100%; }
   width: 100%;
   max-width: 1600px;
   margin: 0 auto;
-  min-height: clamp(950px, 135vh, 1500px);
+  min-height: clamp(560px, calc(100vh - 190px), 1600px);
+  /* dvh ("dynamic" viewport height) tracks the browser chrome's actual
+     current state — unlike vh (fixed) or JS's window.innerHeight (only
+     as fresh as the last time we happened to read it), it updates itself
+     as iOS Safari's address bar hides/shows, which is what kept causing
+     an intermittent scrollbar no amount of JS-side guessing fully fixed.
+     Support is broad enough now to rely on it outright; browsers that
+     don't understand the line simply ignore it and keep the vh one
+     above. This replaces JS setting canvas.style.minHeight — CSS wins
+     that specificity fight (inline was removed), and this is live. */
+  min-height: clamp(560px, calc(100dvh - 190px), 1600px);
   /* Clip here so an edge-positioned, zoomed-in look (--img-scale > 1,
      which widens its box — see .spatial-item) can never push past the
      viewport edge and trigger the iOS drift bug described above. */
@@ -261,6 +271,11 @@ img { max-width: 100%; }
   z-index: 5;
   overflow: hidden;
   cursor: grab;
+  /* Without this, a touch-drag here can be interpreted by the browser as
+     an attempt to scroll/pan the page, which takes the gesture away from
+     us mid-drag (firing pointercancel, never pointerup) instead of
+     letting it complete as a normal drag. */
+  touch-action: none;
 }
 
 .sphere-stage.dragging { cursor: grabbing; }
@@ -499,8 +514,7 @@ img { max-width: 100%; }
      its own inline px width in JS, which wins over this. Orbit positions
      itself dynamically (see js/layouts.js), so it isn't tied to any fixed
      layout that would collide at a larger size. */
-  .spatial-item { width: calc(clamp(110px, 27vw, 190px) * max(1, var(--img-scale, 1))); }
-  .spatial-canvas { min-height: clamp(1050px, 150vh, 1600px); }
+  .spatial-item { width: calc(clamp(190px, 48vw, 300px) * max(1, var(--img-scale, 1))); }
 }
 
 @media (max-width: 480px) {
@@ -511,15 +525,18 @@ img { max-width: 100%; }
      fraction of a pixel and visibly shift About sideways. A column with
      About first removes that coupling entirely — nothing about the
      toggle's state can move it now. */
-  .header-controls { flex-direction: column; align-items: flex-end; gap: 6px; }
+  .header-controls { flex-direction: column; align-items: flex-end; gap: 8px; }
   .menu-btn { order: -1; }
-  .view-toggle { gap: 5px; }
-  .toggle-option { padding: 4px 1px; }
-  .toggle-option svg { width: 13px; height: 13px; }
-  .menu-btn { font-size: 9px; letter-spacing: 0.08em; padding: 4px 1px; }
+  .view-toggle { gap: 10px; }
+  .toggle-option { padding: 4px 2px; }
+  .toggle-option svg { width: 24px; height: 24px; }
+  .menu-btn { font-size: 16px; letter-spacing: 0.06em; padding: 4px 2px; }
   .fx-switcher { left: 10px; bottom: 10px; }
+  /* The two-row header-controls above is taller than the single-row
+     desktop version — give content enough clearance not to sit under it. */
+  .spatial-view, .grid-view { padding-top: clamp(145px, 37vw, 190px); }
 }
 
 @media (max-width: 420px) {
-  .spatial-item { width: calc(clamp(96px, 26vw, 160px) * max(1, var(--img-scale, 1))); }
+  .spatial-item { width: calc(clamp(175px, 46vw, 270px) * max(1, var(--img-scale, 1))); }
 }

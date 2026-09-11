@@ -23,25 +23,32 @@ var VOHUM = window.VOHUM || {};
     items.forEach(function (el) {
       el.style.left = "";
       el.style.top = "";
+      el.style.transform = "";
     });
   }
 
-  function useViewportHeight(canvas) {
-    canvas.style.minHeight = Math.max(560, window.innerHeight - 150) + "px";
-  }
-  function restoreCanvasHeight(canvas) {
-    canvas.style.minHeight = "";
-  }
+  /* Sizing is handled entirely by CSS now (.spatial-canvas min-height,
+     using dvh) — an inline style set here would win over that CSS
+     regardless of specificity and silently reintroduce the JS-side
+     window.innerHeight staleness dvh was specifically chosen to avoid.
+     Kept as a no-op so existing start()/stop() call sites don't need to
+     change. */
+  function useViewportHeight() {}
+  function restoreCanvasHeight() {}
 
   /* FX 01 — Orbit: items travel in two slow concentric rings, staying upright.
 
-     Positions are computed in pixels from a single reference dimension
-     (canvas width on wide viewports, height on narrow ones) rather than
-     as a % of the container for both axes — a "circle" defined by equal
-     x%/y% is only actually round if the container is square, and this
-     canvas isn't. A wide radius gap between rings, a per-item radius
-     "breathe" out of phase with every other item, and a radius clamped
-     to the container's actual size (with margin) round it out. */
+     Positions are computed in pixels, with the X and Y radius each scaled
+     against their OWN safe range (maxRadiusX from actual canvas width,
+     maxRadiusY from actual canvas height — both already accounting for
+     the largest item's real rendered size, so nothing can push past the
+     edge and cause a scrollbar). Scaling independently per axis means the
+     ellipse naturally elongates along whichever dimension has more room
+     — wide on desktop, tall on phone — without a manual aspect multiplier,
+     and each axis uses its own full available space rather than being
+     capped by whichever axis happens to be tighter. A wide radius gap
+     between rings and a per-item radius "breathe" out of phase with every
+     other item round it out. */
   var orbitLayout = {
     running: false,
     raf: null,
@@ -51,12 +58,23 @@ var VOHUM = window.VOHUM || {};
       useViewportHeight(canvas);
       var self = this;
       var n = items.length;
+      // Positioned with left/top(0) once, then moved every frame purely
+      // via `transform` — animating left/top forces a synchronous layout
+      // reflow on every single frame, which is expensive enough on a
+      // phone CPU to visibly stutter. transform is GPU-composited and
+      // doesn't touch layout at all, so 60fps stays smooth. The item's
+      // own --scale (CSS) is read once and baked into that same string.
+      items.forEach(function (el) {
+        el.style.left = "0";
+        el.style.top = "0";
+      });
       var state = items.map(function (el, i) {
         var ring = i % 2;
         return {
           el: el,
           ring: ring,
-          baseRadius: ring === 0 ? 0.09 : 0.46, // fraction of canvas WIDTH — wider ring gap, less crossing
+          scale: parseFloat(getComputedStyle(el).getPropertyValue("--scale")) || 1,
+          baseRadius: ring === 0 ? 0.34 : 0.96, // fraction of the SAFE range on each axis (see maxRadiusX/Y below) — use nearly all of it
           breatheAmp: 0.012 + (i % 3) * 0.006, // smaller than before: less chance of shrinking into the other ring's space
           breathePhase: i * 1.7,
           breatheSpeed: 0.09 + (i % 4) * 0.015,
@@ -72,7 +90,19 @@ var VOHUM = window.VOHUM || {};
         dims.h = rect.height;
       }
       measure();
-      function onResize() { measure(); }
+      // iOS Safari fires repeated resize events as its address bar
+      // hides/shows during ordinary scrolling/touch interaction, each
+      // with a slightly different window.innerHeight — re-measuring (and
+      // snapping every item to the recalculated center/radius) on every
+      // one of those reads as a jittery, "glitchy" rotation. A tiny
+      // real-viewport change isn't worth reacting to; only re-measure
+      // past a threshold that means an actual resize/orientation change.
+      function onResize() {
+        var prevW = dims.w, prevH = dims.h;
+        var rect = canvas.getBoundingClientRect();
+        if (Math.abs(rect.width - prevW) < 40 && Math.abs(rect.height - prevH) < 80) return;
+        measure();
+      }
       window.addEventListener("resize", onResize);
       self.onResize = onResize;
 
@@ -92,39 +122,34 @@ var VOHUM = window.VOHUM || {};
         if (rect.height / 2 > maxHalfH) maxHalfH = rect.height / 2;
       });
 
-      /* Wide viewports (web): spread mainly horizontally, referenced off
-         canvas width. Narrow/tall viewports (phone): swap to a vertical
-         spread referenced off canvas height instead — same idea as FX02
-         (Sphere)'s axisScale, so the shape actually uses the screen it's
-         given rather than staying a small circle lost in a tall, mostly
-         empty mobile canvas. 0.85 (not the ~0.6 this used to be) so it
-         actually fills most of the available cross-axis room instead of
-         leaving roughly half the canvas unused on that axis. */
-      function axisScale(w, h) {
-        var aspect = w / h;
-        if (aspect >= 1) return { ref: w, xMul: 1, yMul: 0.85 };
-        return { ref: h, xMul: 0.85, yMul: 1 };
-      }
-
+      /* X and Y radius are each computed against their OWN available
+         space (maxRadiusX from width, maxRadiusY from height) rather than
+         both being derived from one shared reference dimension with an
+         aesthetic multiplier applied afterward. That coupling was the
+         actual bug behind "doesn't span the screen on mobile": on a tall
+         narrow phone, radius was sized as a fraction of the (large)
+         HEIGHT, then the X axis got clamped down to whatever tiny
+         fraction of THAT happened to fit the (much smaller) width —
+         collapsing horizontal spread to a sliver regardless of how much
+         width was actually available. Scaling radiusFrac against each
+         axis's own max instead means both independently use their full
+         safe range — the shape naturally elongates along whichever
+         dimension has more room, no manual aspect-ratio-driven multiplier
+         needed at all. */
       var start = performance.now();
       function tick(now) {
         if (!self.running) return;
         var t = (now - start) / 1000;
         var w = dims.w, h = dims.h;
         var centerX = w / 2, centerY = h / 2;
-        var axes = axisScale(w, h);
-        var maxRadiusX = Math.max(30, centerX - maxHalfW - 16);
-        var maxRadiusY = Math.max(40, centerY - maxHalfH - 16);
+        var maxRadiusX = Math.max(30, centerX - maxHalfW - 12);
+        var maxRadiusY = Math.max(40, centerY - maxHalfH - 12);
         state.forEach(function (s) {
           var radiusFrac = s.baseRadius + Math.sin(t * s.breatheSpeed + s.breathePhase) * s.breatheAmp;
           var angle = s.angle + t * s.speed;
-          var radiusPx = radiusFrac * axes.ref;
-          var xMul = Math.min(axes.xMul, maxRadiusX / Math.max(1, radiusPx));
-          var yMul = Math.min(axes.yMul, maxRadiusY / Math.max(1, radiusPx));
-          var x = centerX + radiusPx * xMul * Math.cos(angle);
-          var y = centerY + radiusPx * yMul * Math.sin(angle);
-          s.el.style.left = x + "px";
-          s.el.style.top = y + "px";
+          var x = centerX + Math.cos(angle) * radiusFrac * maxRadiusX;
+          var y = centerY + Math.sin(angle) * radiusFrac * maxRadiusY;
+          s.el.style.transform = "translate(" + x + "px," + y + "px) translate(-50%,-50%) scale(" + s.scale + ")";
         });
         self.raf = requestAnimationFrame(tick);
       }
@@ -183,8 +208,14 @@ var VOHUM = window.VOHUM || {};
         var group = new THREE.Group();
         scene.add(group);
 
-        var radius = Math.max(150, Math.min(w, h) * 0.34);
-        var itemPx = Math.max(130, Math.min(w, h) * 0.28);
+        // var radius = Math.max(220, Math.min(w, h) * 0.46);
+        // var itemPx = Math.max(170, Math.min(w, h) * 0.36);
+        var radius = w >= 768
+  ? Math.max(180, Math.min(w, h) * 0.36) // web
+  : Math.max(220, Math.min(w, h) * 0.46); // mobile
+        var itemPx = w >= 768
+  ? Math.min(260, Math.min(w, h) * 0.28) // web
+  : Math.max(170, Math.min(w, h) * 0.36); // mobile
 
         /* Ellipsoid axis scale: wide viewports (web) read as a horizontal
            oval, narrow/tall viewports (phone) as a vertical oval. Depth
@@ -192,9 +223,9 @@ var VOHUM = window.VOHUM || {};
         function axisScale(rw, rh) {
           var aspect = rw / rh;
           if (aspect >= 1) {
-            return { x: Math.min(1.7, 1 + aspect * 0.4), y: 0.62 };
+            return { x: Math.min(2.2, 1 + aspect * 0.5), y: 0.6 };
           }
-          return { x: 0.62, y: Math.min(1.7, 1 + (1 / aspect) * 0.4) };
+          return { x: 0.6, y: Math.min(1.8, 1 + (1 / aspect) * 0.1) }; //mobile
         }
         var axes = axisScale(w, h);
 
@@ -226,16 +257,29 @@ var VOHUM = window.VOHUM || {};
         window.addEventListener("pointermove", onMove, { passive: true });
         self._onMove = onMove;
 
+        // iOS Safari fires repeated resize events as its address bar
+        // hides/shows during ordinary scrolling — each one recomputing
+        // radius/itemPx/axes and snapping every item to it reads as a
+        // jittery, "glitchy" rotation. Same fix as Orbit: ignore changes
+        // too small to be an actual resize/orientation change.
         function onResize() {
           if (!self.running || self.stage !== stage) return;
           var rw = stage.clientWidth || window.innerWidth;
           var rh = stage.clientHeight || h;
+          if (Math.abs(rw - w) < 40 && Math.abs(rh - h) < 80) return;
+          w = rw; h = rh;
           camera.aspect = rw / rh;
           camera.updateProjectionMatrix();
           renderer.setSize(rw, rh);
 
-          radius = Math.max(150, Math.min(rw, rh) * 0.34);
-          itemPx = Math.max(130, Math.min(rw, rh) * 0.28);
+          // radius = Math.max(220, Math.min(rw, rh) * 0.46);
+          // itemPx = Math.max(170, Math.min(rw, rh) * 0.36);
+          radius = rw >= 768
+  ? Math.max(180, Math.min(rw, rh) * 0.36)
+  : Math.max(220, Math.min(rw, rh) * 0.46);
+          itemPx = rw >= 768
+  ? Math.min(260, Math.min(rw, rh) * 0.28) // web
+  : Math.max(170, Math.min(rw, rh) * 0.36); // mobile
           axes = axisScale(rw, rh);
           sockets.forEach(function (s) { s.el.style.width = itemPx + "px"; });
         }
@@ -269,7 +313,17 @@ var VOHUM = window.VOHUM || {};
         }
         stage.addEventListener("pointerdown", onPointerDown);
         window.addEventListener("pointermove", onPointerMoveDrag, { passive: true });
+        // On mobile, if the browser decides this gesture is an attempt to
+        // scroll/pan the page, it can interrupt the pointer sequence with
+        // "pointercancel" instead of ever firing "pointerup" — leaving
+        // `dragging` stuck true forever, which is exactly why auto-spin
+        // (only resumes when !dragging) never restarted. Treat cancel the
+        // same as up. touch-action:none on .sphere-stage (CSS) additionally
+        // stops the browser from trying to pan/scroll from this element in
+        // the first place, so the gesture reaches us as a normal drag
+        // instead of being taken over.
         window.addEventListener("pointerup", onPointerUp);
+        window.addEventListener("pointercancel", onPointerUp);
         self._onPointerDown = onPointerDown;
         self._onPointerMoveDrag = onPointerMoveDrag;
         self._onPointerUp = onPointerUp;
@@ -314,7 +368,10 @@ var VOHUM = window.VOHUM || {};
       if (this._onResize) window.removeEventListener("resize", this._onResize);
       if (this._onPointerDown && this.stage) this.stage.removeEventListener("pointerdown", this._onPointerDown);
       if (this._onPointerMoveDrag) window.removeEventListener("pointermove", this._onPointerMoveDrag);
-      if (this._onPointerUp) window.removeEventListener("pointerup", this._onPointerUp);
+      if (this._onPointerUp) {
+        window.removeEventListener("pointerup", this._onPointerUp);
+        window.removeEventListener("pointercancel", this._onPointerUp);
+      }
       items.forEach(function (el) {
         el.classList.remove("in-sphere");
         el.style.width = "";
