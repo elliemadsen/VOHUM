@@ -1,0 +1,525 @@
+:root {
+  --c-black: #0a0a0a;
+  --c-white: #f7f6f3;
+  --c-grey: #8f8c86;
+  --c-grey-dark: #3d3b38;
+  --c-grey-light: #d9d6cf;
+  --c-orange: #892b1f;
+
+  --font-ui: "Roboto", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-title: "Doppio One", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--c-white);
+  color: var(--c-black);
+  font-family: var(--font-ui);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+body.modal-open { overflow: hidden; }
+
+button { font-family: inherit; }
+
+img { max-width: 100%; }
+
+/* ---------- Header ---------- */
+
+.site-header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: clamp(16px, 3vw, 28px);
+  pointer-events: none;
+}
+
+.site-title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: clamp(26px, 6vw, 40px);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: clamp(10px, 2vw, 18px);
+  pointer-events: auto;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.toggle-option {
+  display: flex;
+  align-items: center;
+  padding: 8px 3px;
+  background: none;
+  border: none;
+  color: var(--c-grey);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.toggle-option svg { fill: currentColor; width: 22px; height: 22px; }
+
+.toggle-option.active { color: var(--c-black); }
+.toggle-option:hover { color: var(--c-orange); }
+/* .active and :hover carry equal specificity, so when both apply at once
+   (e.g. a touch device "sticking" :hover after the tap that set .active)
+   the one declared later in the file wins — :hover was winning, showing
+   orange on the just-selected icon instead of black. This one's more
+   specific than either alone, so active always wins over a stuck hover. */
+.toggle-option.active:hover { color: var(--c-black); }
+
+.menu-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--c-grey);
+  cursor: pointer;
+  padding: 7px 2px;
+}
+
+.menu-btn:hover { color: var(--c-orange); }
+
+/* ---------- Views ---------- */
+
+.view { display: none; }
+.view.active { display: block; }
+
+.spatial-view {
+  padding-top: clamp(96px, 15vw, 140px);
+}
+
+.spatial-canvas {
+  position: relative;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  min-height: clamp(950px, 135vh, 1500px);
+  /* Clip here so an edge-positioned, zoomed-in look (--img-scale > 1,
+     which widens its box — see .spatial-item) can never push past the
+     viewport edge and trigger the iOS drift bug described above. */
+  overflow-x: hidden;
+}
+
+.grid-view {
+  padding-top: clamp(96px, 15vw, 140px);
+  padding-bottom: 60px;
+  max-width: 1020px;
+  margin: 0 auto;
+  /* A scaled-up look (--img-scale > 1) overflows its grid cell via plain
+     content transform (see .grid-item .item-image) — clip here so that
+     can never push the page wider than the viewport and trigger the iOS
+     drift bug described on .spatial-canvas above. */
+  overflow-x: hidden;
+}
+
+.grid-canvas {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: clamp(14px, 2.4vw, 30px);
+  padding: 0 clamp(16px, 3vw, 32px);
+}
+
+@media (max-width: 900px) {
+  .grid-canvas { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 620px) {
+  .grid-canvas { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
+
+@media (max-width: 480px) {
+  /* Two columns reads too cramped on phones — one look per row instead.
+     A flex column (not a grid row-track) so each item takes exactly the
+     vertical space its own rendered size needs — a scaled-up look pushes
+     the next item further down, rather than every row being forced to
+     the same height with visually uneven gaps between differently-sized
+     looks. */
+  .grid-canvas {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 320px;
+    margin: 0 auto;
+    gap: 28px;
+  }
+
+  /* For the flex column above to actually space items by their real
+     rendered height, each item's own BOX needs to grow with --img-scale
+     (same idea as .spatial-item) instead of just visually overflowing it
+     via transform — a transform-only overflow doesn't push flex
+     siblings apart. */
+  .grid-item { width: min(calc(100vw - 40px), calc(100% * max(1, var(--img-scale, 1)))); }
+  .grid-item .item-image { transform: scale(min(1, var(--img-scale, 1))); }
+  .grid-item.is-hovering .item-image,
+  .grid-item .item-hit:focus-visible .item-image {
+    transform: scale(calc(1.015 * min(1, var(--img-scale, 1))));
+  }
+}
+
+/* ---------- Shared item chrome ---------- */
+
+.item-hit {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: default;
+  text-align: left;
+  position: relative;
+  z-index: 3;
+}
+
+/* Pointer only shows over the item once the alpha hit-test (main.js)
+   confirms the cursor is over real pixels, not transparent padding. */
+.spatial-item.is-hovering .item-hit,
+.grid-item.is-hovering .item-hit,
+.item-hit:focus-visible {
+  cursor: pointer;
+}
+
+.item-image {
+  width: 100%;
+  display: block;
+  aspect-ratio: 3 / 4;
+  object-fit: contain;
+  background: transparent;
+  transform: scale(var(--img-scale, 1));
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+/* ---------- Grid view items ---------- */
+
+.grid-item .item-image {
+  filter: grayscale(0.2) saturate(var(--img-saturation, 1));
+}
+.grid-item.is-hovering .item-image,
+.grid-item .item-hit:focus-visible .item-image {
+  filter: grayscale(0) saturate(var(--img-saturation, 1));
+  transform: scale(calc(1.015 * var(--img-scale, 1)));
+}
+
+/* ---------- Spatial view items ---------- */
+
+.spatial-item {
+  position: absolute;
+  left: var(--left);
+  top: var(--top);
+  /* Grows past the base size for any look tuned above 1x, so the zoomed
+     content (object-fit:contain, unscaled beyond 1x here — see override
+     below) has room and is never pushed out of frame near the viewport
+     edge. Grid view doesn't have this risk, so it keeps plain content
+     scaling above (uniform cell size). */
+  width: calc(clamp(112px, 19vw, 230px) * max(1, var(--img-scale, 1)));
+  transform: translate(-50%, -50%) scale(var(--scale));
+}
+
+.spatial-item .item-image {
+  filter: drop-shadow(0 14px 20px rgba(10, 10, 10, 0.28)) saturate(var(--img-saturation, 1));
+  transform: scale(min(1, var(--img-scale, 1)));
+}
+
+.spatial-item.is-hovering .item-image,
+.spatial-item .item-hit:focus-visible .item-image {
+  transform: scale(calc(1.03 * min(1, var(--img-scale, 1))));
+}
+
+/* ---------- Sphere layout (FX 02) ---------- */
+
+.spatial-view { position: relative; }
+
+.sphere-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.sphere-stage.dragging { cursor: grabbing; }
+
+.spatial-item.in-sphere {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+}
+
+/* In the sphere, the item's own bounding box (item-hit) sits on top of
+   the true background over its transparent padding too — without this,
+   that padding would show the browser's plain default arrow instead of
+   the drag cursor the empty space around it has. Only an actual solid
+   pixel (is-hovering, alpha-gated in main.js) should read as selectable. */
+.spatial-item.in-sphere .item-hit { cursor: grab; }
+.spatial-item.in-sphere.is-hovering .item-hit,
+.spatial-item.in-sphere .item-hit:focus-visible {
+  cursor: pointer;
+}
+
+.spatial-item.in-sphere.is-hovering .item-image,
+.spatial-item.in-sphere .item-hit:focus-visible .item-image {
+  transform: scale(calc(1.4 * min(1, var(--img-scale, 1))));
+}
+
+.ghost-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* Opacity of the far/near ghost layers = VOHUM.TUNING.MIN_DARKNESS /
+   MAX_DARKNESS, pushed into these custom properties at startup. */
+.ghost-far { z-index: 1; opacity: var(--ghost-far-opacity, 0.3); }
+.ghost-near { z-index: 2; opacity: var(--ghost-near-opacity, 0.55); }
+
+.ghost-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The canvas is drawn small (one pixel per character cell, ~4-10px)
+     then CSS-stretched to fill the item — without this, the browser's
+     default smooth/bilinear upscaling blurs every character edge into
+     mush. Nearest-neighbor scaling keeps them crisp. */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: pixelated;
+  animation-name: ghostGlitch;
+  animation-duration: var(--glitch-dur, 7s);
+  animation-delay: var(--glitch-delay, 0s);
+  animation-iteration-count: infinite;
+  animation-timing-function: steps(1, end);
+}
+
+/* VOHUM.TUNING.GLITCH_FREQUENCY: 0 — main.js flags the item, this stops
+   the animation outright rather than computing an infinite duration. */
+.spatial-item.no-glitch .ghost-canvas { animation: none; }
+
+@keyframes ghostGlitch {
+  0%, 88%, 100% { clip-path: inset(0 0 0 0); transform: translateX(0); filter: none; }
+  89% { clip-path: inset(8% 0 62% 0); transform: translateX(6px); }
+  90% { clip-path: inset(55% 0 15% 0); transform: translateX(-6px); filter: hue-rotate(25deg); }
+  91% { clip-path: inset(20% 0 44% 0); transform: translateX(4px); }
+  92% { clip-path: inset(0 0 0 0); transform: translateX(0); filter: none; }
+}
+
+/* ---------- FX switcher (spatial view only) ---------- */
+
+.fx-switcher {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fx-label {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--c-grey);
+  margin-right: 2px;
+}
+
+.fx-btn {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  background: none;
+  border: none;
+  color: var(--c-grey);
+  padding: 3px 2px;
+  cursor: pointer;
+}
+
+.fx-btn.active { color: var(--c-black); }
+.fx-btn:hover { color: var(--c-orange); }
+
+/* ---------- Modals ---------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.84);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+
+.modal {
+  background: var(--c-white);
+  width: 100%;
+  max-width: 620px;
+  max-height: 92vh;
+  overflow: hidden;
+  position: relative;
+  padding: clamp(22px, 4vw, 44px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.modal-image-wrap {
+  /* Bound width by a HEIGHT budget (viewport minus modal chrome), not just
+     by the modal's own max-width, so the 3:4 image's implied height can
+     never push the modal past the viewport and force a scrollbar. */
+  width: min(100%, calc((100vh - 200px) * 3 / 4));
+  margin: 0 auto;
+  position: relative;
+}
+
+.modal-image-wrap img {
+  width: 100%;
+  display: block;
+  aspect-ratio: 3 / 4;
+  object-fit: contain;
+  background: transparent;
+}
+
+.modal-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: none;
+  color: var(--c-black);
+  font-size: 26px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.modal-nav:hover { color: var(--c-orange); }
+.modal-nav-prev { left: -6px; }
+.modal-nav-next { right: -6px; }
+
+.modal-dots {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.modal-dot {
+  font-size: 22px;
+  line-height: 1;
+  border: none;
+  background: none;
+  color: var(--c-grey-light);
+  padding: 4px;
+  cursor: pointer;
+}
+
+.modal-dot::before { content: "\2022"; }
+.modal-dot.active { color: var(--c-black); }
+
+.modal-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+
+.modal-info p {
+  margin: 0;
+  color: var(--c-grey-dark);
+  line-height: 1.65;
+  font-size: 14px;
+}
+
+.sold-out-note {
+  color: var(--c-grey) !important;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 11px !important;
+}
+
+.modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  border: none;
+  background: none;
+  font-size: 26px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--c-black);
+  /* Without this, .modal-image-wrap (a later sibling, so it paints on
+     top by default) can visually and functionally cover this corner on
+     narrow/mobile modals where the image spans close to full width —
+     the tap lands on the image, not the button underneath it. */
+  z-index: 3;
+}
+
+.modal-close:hover { color: var(--c-orange); }
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 620px) {
+  /* This width only actually governs FX01 (Orbit) — FX02 (Sphere) sets
+     its own inline px width in JS, which wins over this. Orbit positions
+     itself dynamically (see js/layouts.js), so it isn't tied to any fixed
+     layout that would collide at a larger size. */
+  .spatial-item { width: calc(clamp(110px, 27vw, 190px) * max(1, var(--img-scale, 1))); }
+  .spatial-canvas { min-height: clamp(1050px, 150vh, 1600px); }
+}
+
+@media (max-width: 480px) {
+  /* About/FW26 stays pinned top-right, level with VOHUM; the view-toggle
+     icons stack below it instead of sharing a row. Previously both sat
+     in one un-wrapped flex row, so which icon was active (a plain color
+     change, no size change) could still nudge the row's total width by a
+     fraction of a pixel and visibly shift About sideways. A column with
+     About first removes that coupling entirely — nothing about the
+     toggle's state can move it now. */
+  .header-controls { flex-direction: column; align-items: flex-end; gap: 6px; }
+  .menu-btn { order: -1; }
+  .view-toggle { gap: 5px; }
+  .toggle-option { padding: 4px 1px; }
+  .toggle-option svg { width: 13px; height: 13px; }
+  .menu-btn { font-size: 9px; letter-spacing: 0.08em; padding: 4px 1px; }
+  .fx-switcher { left: 10px; bottom: 10px; }
+}
+
+@media (max-width: 420px) {
+  .spatial-item { width: calc(clamp(96px, 26vw, 160px) * max(1, var(--img-scale, 1))); }
+}
