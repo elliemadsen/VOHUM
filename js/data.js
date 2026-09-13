@@ -42,7 +42,7 @@ VOHUM.TUNING = {
                              // layer is a second, lower-res copy offset from the near one, so the more
                              // visible it is, the more "doubled/blurry" the pair reads as a whole. Faint
                              // here lets the near layer (crisp, high opacity) read as the actual text.
-  MAX_DARKNESS: 0.7,       // opacity of the near (foreground) ghost layer — how strong the darkest layer gets
+  MAX_DARKNESS: 0.6,       // opacity of the near (foreground) ghost layer — how strong the darkest layer gets
   CHARACTERS: {
     ASCII: " .:-+*v#%@",     // used by ASCII Ghost + Scanline ASCII, light -> dark
     DITHER: "&#%*+=-.!:;"   // used by Bitmap Dither

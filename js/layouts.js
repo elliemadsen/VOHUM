@@ -208,14 +208,12 @@ var VOHUM = window.VOHUM || {};
         var group = new THREE.Group();
         scene.add(group);
 
-        // var radius = Math.max(220, Math.min(w, h) * 0.46);
-        // var itemPx = Math.max(170, Math.min(w, h) * 0.36);
         var radius = w >= 768
-  ? Math.max(180, Math.min(w, h) * 0.36) // web
-  : Math.max(220, Math.min(w, h) * 0.46); // mobile
+          ? Math.max(180, Math.min(w, h) * 0.36) // web
+          : Math.max(220, Math.min(w, h) * 0.46); // mobile
         var itemPx = w >= 768
-  ? Math.min(260, Math.min(w, h) * 0.28) // web
-  : Math.max(170, Math.min(w, h) * 0.36); // mobile
+          ? Math.min(260, Math.min(w, h) * 0.28) // web
+          : Math.max(170, Math.min(w, h) * 0.36); // mobile
 
         /* Ellipsoid axis scale: wide viewports (web) read as a horizontal
            oval, narrow/tall viewports (phone) as a vertical oval. Depth
@@ -272,14 +270,12 @@ var VOHUM = window.VOHUM || {};
           camera.updateProjectionMatrix();
           renderer.setSize(rw, rh);
 
-          // radius = Math.max(220, Math.min(rw, rh) * 0.46);
-          // itemPx = Math.max(170, Math.min(rw, rh) * 0.36);
           radius = rw >= 768
-  ? Math.max(180, Math.min(rw, rh) * 0.36)
-  : Math.max(220, Math.min(rw, rh) * 0.46);
+            ? Math.max(180, Math.min(rw, rh) * 0.36)
+            : Math.max(220, Math.min(rw, rh) * 0.46);
           itemPx = rw >= 768
-  ? Math.min(260, Math.min(rw, rh) * 0.28) // web
-  : Math.max(170, Math.min(rw, rh) * 0.36); // mobile
+            ? Math.min(260, Math.min(rw, rh) * 0.28) // web
+            : Math.max(170, Math.min(rw, rh) * 0.36); // mobile
           axes = axisScale(rw, rh);
           sockets.forEach(function (s) { s.el.style.width = itemPx + "px"; });
         }
